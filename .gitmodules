@@ -1,0 +1,4 @@
+[submodule "saliency_opencv"]
+	path = saliency_opencv
+	url = https://github.com/surjithbs17/saliency_opencv.git
+	branch = master
