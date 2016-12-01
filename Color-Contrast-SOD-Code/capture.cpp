@@ -106,12 +106,12 @@ int main(int argc, char* argv[])
     cv::Mat _color3f = cv::Mat::zeros(1, maxNum, CV_32FC3);
     cv::Mat _colorNum = cv::Mat::zeros(_color3f.size(), CV_32S);
     
-    cv::vectb* color = (cv::vectb*)(_color3f.data);
+    cv::Vec3b* color = (cv::Vec3b*)(_color3f.data);
     
     int* colorNum = (int*)(_colorNum.data);
     for (int y = 0; y < rows; y++)
     {
-        const cv::vectb* imgData = img.ptr<cv::vectb>(y);
+        const cv::Vec3b* imgData = img.ptr<cv::Vec3b>(y);
         int* idx = id.ptr<int>(y);
         for (int x = 0; x < cols; x++)
         {
@@ -132,7 +132,7 @@ int main(int argc, char* argv[])
     cv::Mat _colorSal = cv::Mat::zeros(1, binN, CV_32F);
     float* colorSal = (float*)(_colorSal.data);
     std::vector<std::vector<CostfIdx> > similar(binN); // Get how similar the colors are and thier index
-    cv::vectb* color1 = (cv::vectb*)(_color3f.data);
+    cv::Vec3b* color1 = (cv::Vec3b*)(_color3f.data);
     float *w1 = (float*)(wt.data);
     for (int i = 0; i < binN; i++){
         std::vector<CostfIdx> &similari = similar[i];

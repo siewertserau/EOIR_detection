@@ -1,4 +1,4 @@
-INCLUDE_DIRS = 
+INCLUDE_DIRS =  -I/usr/include
 LIB_DIRS = 
 CC=g++
 
@@ -24,7 +24,7 @@ distclean:
 	-rm -f *.o *.d
 
 final: final.o
-	$(CC) $(LDFLAGS) $(CFLAGS) ${CPPFILES} -ggdb `pkg-config --cflags opencv` -o $@.o `pkg-config --libs opencv` $(CPPLIBS)
+	$(CC) $(LDFLAGS) $(CFLAGS) ${CPPFILES} -ggdb `pkg-config --cflags opencv` -o $@ `pkg-config --libs opencv` $(CPPLIBS)
 
 depend:
 
