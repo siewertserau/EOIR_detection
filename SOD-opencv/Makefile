@@ -1,4 +1,5 @@
-INCLUDE_DIRS =  -I/usr/local/opencv/include
+INCLUDE_DIRS =  -I/usr/include -I/home/siewerts/Downloads/opencv-3.1.0/opencv_contrib/modules/saliency/include
+
 LIB_DIRS = 
 CC=g++
 
@@ -12,21 +13,19 @@ CFILES=
 
 SRCS= ${HFILES} ${CFILES}
 
-all:	capture stereo_match capture_stereo
+all:	main
 
 clean:
 	-rm -f *.o *.d
-	-rm -f capture
-	-rm -f capture_stereo
-	-rm -f stereo_match
+	-rm -f main
 
 distclean:
 	-rm -f *.o *.d
 
-capture_stereo: capture_stereo.o
+main: main.o
 	$(CC) $(LDFLAGS) $(CFLAGS) $(INCLUDE_DIRS) -o $@ $@.o `pkg-config --libs opencv` $(CPPLIBS)
 
-capture: capture.o
+main: main.o
 	$(CC) $(LDFLAGS) $(CFLAGS) $(INCLUDE_DIRS) -o $@ $@.o `pkg-config --libs opencv` $(CPPLIBS)
 
 stereo_match: stereo_match.o
