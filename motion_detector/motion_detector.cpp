@@ -16,22 +16,25 @@ using namespace cv;
 
 #define WINDOW_NAME "Motion Detector"
 
-#define DEVICE_ID 1
+#define DEVICE_ID 0
 
 //#define SHOW_DIFF
 
-#define DELAY (1000/30)
+#define DELAY_IN_MSEC (15)
 
-#define DIRECTORY ("./save/")
+#define DIRECTORY ("/mnt/data/detect/")
+#define DIRECTORY2 ("/mnt/data/collect/")
 #define FILE_FORMAT ("%d%h%Y_%H%M%S") // 1Jan1970/1Jan1970_12153
 #define EXTENSION (".png") // extension of the images
 
 #define MAX_THRESHOLD 255
 #define MAX_DEVIATION 255 // Maximum allowable deviation of a pixel to count as "changed"
 
-int currentThreshold = 15;
-int currentDeviation = 30;
+int currentThreshold = 5;
+int currentDeviation = 3;
 int currentMotionTrigger = 10;
+
+#define CAM_WIDTH_OFFSET 0
 
 bool running = true;
 
@@ -54,16 +57,20 @@ inline void directoryExistsOrCreate(const char* pzPath) {
   }
 }
 
+
 // When motion is detected we write the image to disk
 //    - Check if the directory exists where the image will be stored.
 //    - Build the directory and image names.
-inline bool saveImg(Mat image, const string directory, const string extension, const string fileFormat, const int sequence) {
-  static int incr = 0;
+inline bool saveImg(Mat image, const string directory,
+                    const string extension, const string fileFormat,
+                    const int sequence, int traceOn)
+{
   stringstream ss;
   time_t seconds;
   struct tm * timeinfo;
   char timeStr[80];
   time(&seconds);
+
   // Get the current time
   timeinfo = localtime(&seconds);
 
@@ -72,19 +79,19 @@ inline bool saveImg(Mat image, const string directory, const string extension, c
 
   // Create name for the image
   strftime(timeStr, 80, fileFormat.c_str(), timeinfo);
-  if(incr < 100) {
-    incr++; // quick fix for when delay < 1s && > 10ms, (when delay <= 10ms, images are overwritten)
-  } else {
-    incr = 0;
-  }
+
   ss.str("");
-  ss << directory << timeStr << incr << "_" << sequence << extension;
-  cout << "Saving Image: " << ss.str() << endl;
+  ss << directory << timeStr << "_" << sequence << extension;
+
+  if(traceOn)
+      cout << "Saving Image: " << ss.str() << endl;
+
   return imwrite(ss.str().c_str(), image);
 }
 
 // Check if there is motion in the result matrix. Count the number of changes and return.
 inline MotionDetectData_t detectMotion(const Mat &motion, int max_deviation, int triggerCount) {
+
   int rows = motion.rows;
   int cols = motion.cols;
   
@@ -113,7 +120,9 @@ inline MotionDetectData_t detectMotion(const Mat &motion, int max_deviation, int
   return data;
 }
 
-int main (int argc, char * const argv[]) {
+
+int main (int argc, char * const argv[]) 
+{
   // Drawing variables for writing to the window
   stringstream drawnStringStream;
   Point textOrg(10, 10);
@@ -130,6 +139,7 @@ int main (int argc, char * const argv[]) {
   Mat d1, d2, motion;
   MotionDetectData_t motionDetectData;
   int numberOfSequence = 0;
+  unsigned int frameCnt = 0;
 
   // Erode kernel
   Mat kernel_ero = getStructuringElement(MORPH_RECT, Size(2, 2));
@@ -142,7 +152,7 @@ int main (int argc, char * const argv[]) {
     cout << "Failed to open Device ID " << DEVICE_ID << "!" << endl;
     exit(EXIT_SUCCESS);
   }
-      
+
   // Take image, initialize mats, and convert them to gray
   camera >> result_saved;
   prevPrevFrame = Mat::zeros(result_saved.size(), result_saved.type());
@@ -168,10 +178,11 @@ int main (int argc, char * const argv[]) {
   createTrackbar("Max Deviation:", WINDOW_NAME, &currentDeviation, MAX_DEVIATION, NULL);
   createTrackbar("Pixels Changed:", WINDOW_NAME, &currentMotionTrigger, currentFrame.cols * currentFrame.rows, NULL);	
   
-  cvWaitKey (DELAY);
+  cvWaitKey (DELAY_IN_MSEC);
 
-  // All settings have been set, now go in endless loop and take as many pictures you want..
-  while (running) {
+  // All settings have been set, now go in endless frame acquisition loop
+  while (running)
+  {
     // Take a new image
     camera >> result_saved;
     prevFrame.copyTo(prevPrevFrame);
@@ -187,7 +198,7 @@ int main (int argc, char * const argv[]) {
     threshold(motion, motion, currentThreshold, 255, CV_THRESH_BINARY);
     erode(motion, motion, kernel_ero);
     
-    motionDetectData = detectMotion(motion, currentDeviation, currentMotionTrigger);
+    motionDetectData = detectMotion(motion(Rect(CAM_WIDTH_OFFSET, 0, 640-(CAM_WIDTH_OFFSET * 2), 480)), currentDeviation, currentMotionTrigger);
 
     /* 
     * I think it's self-descriptive. We pick 4 different ROIs and copy
@@ -236,16 +247,27 @@ int main (int argc, char * const argv[]) {
     textOrg.y = 80;
     putText(display, drawnStringStream.str(), textOrg, FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar::all(255), 2, 8);
 
-    if (motionDetectData.isMotion) {
-      //if (numberOfSequence > 0) saveImg(result_saved, DIRECTORY, EXTENSION, FILE_FORMAT, numberOfSequence);
-      saveImg(result_saved, DIRECTORY, EXTENSION, FILE_FORMAT, numberOfSequence);
+    // save detected frames
+    if (motionDetectData.isMotion) 
+    {
+      //if (numberOfSequence > 0) saveImg(result_saved, DIRECTORY, EXTENSION, FILE_FORMAT, numberOfSequence, 1);
+      saveImg(result_saved, DIRECTORY, EXTENSION, FILE_FORMAT, frameCnt, 1);
       numberOfSequence++;
-    } else {
+    } 
+    else
+    {
       numberOfSequence = 0;
+    }
+
+    // save every frame to compare detected frames to
+    if((frameCnt % 10) ==  0)
+    {
+      saveImg(result_saved, DIRECTORY2, EXTENSION, FILE_FORMAT, frameCnt, 0);
     }
     
     imshow(WINDOW_NAME, display);
-    cvWaitKey (DELAY);
+    frameCnt++;
+    cvWaitKey (DELAY_IN_MSEC);
   }
   
   camera.release();
