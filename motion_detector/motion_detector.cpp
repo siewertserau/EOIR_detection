@@ -22,17 +22,29 @@ using namespace cv;
 
 #define DELAY_IN_MSEC (15)
 
-#define DIRECTORY ("/mnt/data/detect/")
-#define DIRECTORY2 ("/mnt/data/collect/")
+#define DETECT_DIRECTORY ("/mnt/data/detect/")
+#define COLLECT_DIRECTORY ("/mnt/data/collect/")
+
+#define COLLECT_EVERY_NTH_FRAME 30
+
 #define FILE_FORMAT ("%d%h%Y_%H%M%S") // 1Jan1970/1Jan1970_12153
 #define EXTENSION (".png") // extension of the images
 
 #define MAX_THRESHOLD 255
 #define MAX_DEVIATION 255 // Maximum allowable deviation of a pixel to count as "changed"
 
+#ifdef LOW_RES_DETECTION
 int currentThreshold = 5;
 int currentDeviation = 3;
 int currentMotionTrigger = 10;
+#else
+//int currentThreshold = 15;
+//int currentDeviation = 9;
+//int currentMotionTrigger = 30;
+int currentThreshold = 10;
+int currentDeviation = 5;
+int currentMotionTrigger = 20;
+#endif
 
 #define CAM_WIDTH_OFFSET 0
 
@@ -45,10 +57,12 @@ typedef struct {
   int numberOfChanges;
 } MotionDetectData_t;
 
+
 // Check if the directory exists, if not create it
 // This function will create a new directory if the image is the first
 // image taken for a specific day
-inline void directoryExistsOrCreate(const char* pzPath) {
+inline void directoryExistsOrCreate(const char* pzPath) 
+{
   DIR *pDir;    
   if ( pzPath == NULL || (pDir = opendir (pzPath)) == NULL) { // directory doesn't exists -> create it
     mkdir(pzPath, 0777);    
@@ -89,8 +103,13 @@ inline bool saveImg(Mat image, const string directory,
   return imwrite(ss.str().c_str(), image);
 }
 
-// Check if there is motion in the result matrix. Count the number of changes and return.
-inline MotionDetectData_t detectMotion(const Mat &motion, int max_deviation, int triggerCount) {
+
+// Check if there is motion in the result matrix.
+// Count the number of changes and return.
+inline MotionDetectData_t detectMotion(const Mat &motion, 
+                                       int max_deviation, 
+                                       int triggerCount) 
+{
 
   int rows = motion.rows;
   int cols = motion.cols;
@@ -106,12 +125,17 @@ inline MotionDetectData_t detectMotion(const Mat &motion, int max_deviation, int
   data.isMotion = false;
   
   meanStdDev(motion, data.mean, data.stddev);
+
   // if not to much changes then the motion is real
-  if (data.stddev[0] < max_deviation) {
+  if (data.stddev[0] < max_deviation) 
+  {
     // loop over image and detect changes
-    for (int j = 0; j < rows; j+=1) { // height
-      for (int i = 0; i < cols; i+=1) { // width
-        // check if at pixel (j,i) intensity is equal to 255 this means that the pixel is different in the sequence of images (prev_frame, current_frame, next_frame)
+    for (int j = 0; j < rows; j+=1)   // height
+    {
+      for (int i = 0; i < cols; i+=1) // width
+      {
+        // check if at pixel (j,i) intensity is equal to 255 this means that the pixel
+        // is different in the sequence of images (prev_frame, current_frame, next_frame)
         if ((motion.at<int>(j,i)) == 255) data.numberOfChanges++;        
       }
     }
@@ -135,37 +159,82 @@ int main (int argc, char * const argv[])
   // result, the result of and operation, calculated on d1 and d2
   // number_of_changes, the amount of changes in the result matrix.
   // color, the color for drawing the rectangle when something has changed.
-  Mat prevPrevFrame, prevFrame, currentFrame, result_saved, resultTracked, display, roi;  
+  Mat prevPrevFrame, prevFrame, currentFrame, capture_frame, resultTracked, display;  
   Mat d1, d2, motion;
   MotionDetectData_t motionDetectData;
   int numberOfSequence = 0;
   unsigned int frameCnt = 0;
+  VideoCapture capture_interface;
+  int no_capture_cnt=0;
+
 
   // Erode kernel
   Mat kernel_ero = getStructuringElement(MORPH_RECT, Size(2, 2));
-  
-  // Set up camera
-  VideoCapture camera(DEVICE_ID);
-  if (camera.isOpened()) { // check if we succeeded
-    cout << "Successfully opened Device ID " << DEVICE_ID << "!" << endl;
-  } else {
-    cout << "Failed to open Device ID " << DEVICE_ID << "!" << endl;
-    exit(EXIT_SUCCESS);
+
+#ifdef CAMERA  
+
+  if(argc > 1)
+  {
+      // Set up camera for specified device
+      capture_interface.open(argv[1]);
+
+      if (capture_interface.isOpened()) { // check if we succeeded
+        cout << "Successfully opened input stream " << argv[1] << "!" << endl;
+      } else {
+        cout << "Failed to open input stream " << argv[1] << "!" << endl;
+        exit(EXIT_SUCCESS);
+      }
+  }
+  else
+  {
+      // Set up camera for default device
+      capture_interface.open(DEVICE_ID);
+
+      if (capture_interface.isOpened()) { // check if we succeeded
+        cout << "Successfully opened input stream " << DEVICE_ID << "!" << endl;
+      } else {
+        cout << "Failed to open input stream " << DEVICE_ID << "!" << endl;
+        exit(EXIT_SUCCESS);
+      }
   }
 
-  // Take image, initialize mats, and convert them to gray
-  camera >> result_saved;
-  prevPrevFrame = Mat::zeros(result_saved.size(), result_saved.type());
-  prevFrame = Mat::zeros(result_saved.size(), result_saved.type());
-  currentFrame = Mat::zeros(result_saved.size(), result_saved.type());
-#ifdef SHOW_DIFF
-  display = Mat::zeros(Size(result_saved.cols * 2, result_saved.rows * 2), result_saved.type());
 #else
-  display = Mat::zeros(Size(result_saved.cols * 2, result_saved.rows * 1), result_saved.type());
+
+  if(argc > 1)
+  {
+      capture_interface.open(argv[1]);
+
+      if (capture_interface.isOpened()) { // check if we succeeded
+        cout << "Successfully opened Device ID " << argv[1] << "!" << endl;
+      } else {
+        cout << "Failed to open Device ID " << argv[1] << "!" << endl;
+        exit(EXIT_SUCCESS);
+      }
+  }
+  else
+  {
+      printf("Usage: motion_detect <video source>\n"); exit(-1);
+  }
+
+#endif
+
+  // Take image, initialize mats, and convert them to gray
+  capture_interface >> capture_frame;
+
+  if(capture_frame.empty()) {cout << "First frame error" << endl; exit(-1);};
+
+  prevPrevFrame = Mat::zeros(capture_frame.size(), capture_frame.type());
+  prevFrame = Mat::zeros(capture_frame.size(), capture_frame.type());
+  currentFrame = Mat::zeros(capture_frame.size(), capture_frame.type());
+
+#ifdef SHOW_DIFF
+  display = Mat::zeros(Size(capture_frame.cols * 2, capture_frame.rows * 2), capture_frame.type());
+#else
+  display = Mat::zeros(Size(capture_frame.cols * 2, capture_frame.rows * 1), capture_frame.type());
 #endif
   
-  result_saved.copyTo(prevFrame);
-  result_saved.copyTo(currentFrame);
+  capture_frame.copyTo(prevFrame);
+  capture_frame.copyTo(currentFrame);
   
   cvtColor(prevFrame, prevFrame, CV_RGB2GRAY);
   cvtColor(currentFrame, currentFrame, CV_RGB2GRAY);
@@ -184,10 +253,20 @@ int main (int argc, char * const argv[])
   while (running)
   {
     // Take a new image
-    camera >> result_saved;
+    capture_interface >> capture_frame;
+    if(capture_frame.empty()) 
+    {
+      no_capture_cnt++;
+
+      if(no_capture_cnt < 10)
+        continue;
+      else
+        break; 
+    }
+
     prevFrame.copyTo(prevPrevFrame);
     currentFrame.copyTo(prevFrame);
-    result_saved.copyTo(currentFrame);
+    capture_frame.copyTo(currentFrame);
     
     cvtColor(currentFrame, currentFrame, CV_RGB2GRAY);
     
@@ -198,7 +277,7 @@ int main (int argc, char * const argv[])
     threshold(motion, motion, currentThreshold, 255, CV_THRESH_BINARY);
     erode(motion, motion, kernel_ero);
     
-    motionDetectData = detectMotion(motion(Rect(CAM_WIDTH_OFFSET, 0, 640-(CAM_WIDTH_OFFSET * 2), 480)), currentDeviation, currentMotionTrigger);
+    motionDetectData = detectMotion(motion(Rect(CAM_WIDTH_OFFSET, 0, capture_frame.cols-(CAM_WIDTH_OFFSET * 2), capture_frame.rows)), currentDeviation, currentMotionTrigger);
 
     /* 
     * I think it's self-descriptive. We pick 4 different ROIs and copy
@@ -206,10 +285,12 @@ int main (int argc, char * const argv[])
     */
     display = Scalar(0, 0, 0);
     
-    result_saved.copyTo(resultTracked);
-    if (motionDetectData.isMotion) {
+    capture_frame.copyTo(resultTracked);
+    if (motionDetectData.isMotion) 
+    {
       findContours(motion, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE, Point(0, 0));
-      for( int i = 0; i < contours.size(); i++ ) {
+      for( int i = 0; i < contours.size(); i++ ) 
+      {
          boundingR = boundingRect(contours[i]);
          rectangle(resultTracked, boundingR.tl(), boundingR.br(), Scalar(0, 255, 0), 2, CV_AA , 0);
        }
@@ -217,16 +298,16 @@ int main (int argc, char * const argv[])
     
 #ifdef SHOW_DIFF
     cvtColor(d1, d1, CV_GRAY2RGB);
-    d1.copyTo(display(Rect(result_saved.cols * 0, result_saved.rows * 0, result_saved.cols, result_saved.rows)));
+    d1.copyTo(display(Rect(capture_frame.cols * 0, capture_frame.rows * 0, capture_frame.cols, capture_frame.rows)));
     cvtColor(d2, d2, CV_GRAY2RGB);
-    d2.copyTo(display(Rect(result_saved.cols * 1, result_saved.rows * 0, result_saved.cols, result_saved.rows)));
+    d2.copyTo(display(Rect(capture_frame.cols * 1, capture_frame.rows * 0, capture_frame.cols, capture_frame.rows)));
     cvtColor(motion, motion, CV_GRAY2RGB);
-    motion.copyTo(display(Rect(result_saved.cols * 0, result_saved.rows * 1, result_saved.cols, result_saved.rows)));
-    resultTracked.copyTo(display(Rect(result_saved.cols * 1, result_saved.rows * 1, result_saved.cols, result_saved.rows)));
+    motion.copyTo(display(Rect(capture_frame.cols * 0, capture_frame.rows * 1, capture_frame.cols, capture_frame.rows)));
+    resultTracked.copyTo(display(Rect(capture_frame.cols * 1, capture_frame.rows * 1, capture_frame.cols, capture_frame.rows)));
 #else
     cvtColor(motion, motion, CV_GRAY2RGB);
-    motion.copyTo(display(Rect(result_saved.cols * 0, result_saved.rows * 0, result_saved.cols, result_saved.rows)));
-    resultTracked.copyTo(display(Rect(result_saved.cols * 1, result_saved.rows * 0, result_saved.cols, result_saved.rows)));
+    motion.copyTo(display(Rect(capture_frame.cols * 0, capture_frame.rows * 0, capture_frame.cols, capture_frame.rows)));
+    resultTracked.copyTo(display(Rect(capture_frame.cols * 1, capture_frame.rows * 0, capture_frame.cols, capture_frame.rows)));
 #endif
 
     drawnStringStream.str("");
@@ -250,8 +331,8 @@ int main (int argc, char * const argv[])
     // save detected frames
     if (motionDetectData.isMotion) 
     {
-      //if (numberOfSequence > 0) saveImg(result_saved, DIRECTORY, EXTENSION, FILE_FORMAT, numberOfSequence, 1);
-      saveImg(result_saved, DIRECTORY, EXTENSION, FILE_FORMAT, frameCnt, 1);
+      //if (numberOfSequence > 0) saveImg(capture_frame, DETECT_DIRECTORY, EXTENSION, FILE_FORMAT, numberOfSequence, 1);
+      saveImg(capture_frame, DETECT_DIRECTORY, EXTENSION, FILE_FORMAT, frameCnt, 1);
       numberOfSequence++;
     } 
     else
@@ -260,9 +341,9 @@ int main (int argc, char * const argv[])
     }
 
     // save every frame to compare detected frames to
-    if((frameCnt % 10) ==  0)
+    if((frameCnt % COLLECT_EVERY_NTH_FRAME) ==  0)
     {
-      saveImg(result_saved, DIRECTORY2, EXTENSION, FILE_FORMAT, frameCnt, 0);
+      saveImg(capture_frame, COLLECT_DIRECTORY, EXTENSION, FILE_FORMAT, frameCnt, 0);
     }
     
     imshow(WINDOW_NAME, display);
@@ -270,7 +351,9 @@ int main (int argc, char * const argv[])
     cvWaitKey (DELAY_IN_MSEC);
   }
   
-  camera.release();
+  capture_interface.release();
+
+  destroyAllWindows();
   
   return 0;
 }
